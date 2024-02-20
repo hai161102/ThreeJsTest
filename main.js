@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { generateRenderer, removeAllChild } from './utils/Utils'
+import { generateRenderer, removeAllChild, generateLights, getCapsule } from './utils/Utils'
 import Match from './match/Match'
 const app = document.getElementById('app')
 const side1 = document.getElementById('side1')
@@ -52,38 +52,18 @@ tones.forEach(tone => {
 
 const textureLoader = new THREE.TextureLoader();
 const loader = new GLTFLoader();
-
-function generateLights() {
-
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 0.6);
-    hemiLight.position.set(0, 10, 0);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(0, 10, 0);
-    directionalLight.shadow.mapSize.width = 512  // default
-    directionalLight.shadow.mapSize.height = 512  // default
-    directionalLight.shadow.camera.near = 1  // default
-    directionalLight.shadow.camera.far = 2000  // default
-    directionalLight.shadow.bias = -0.00005
-    directionalLight.castShadow = true;
-
-    return { ambientLight, hemiLight, directionalLight }
-}
-
+const raycaster = new THREE.Raycaster();
 function initScene(modelPath, {
     side,
     toneMapping,
     shader,
     scale
 }) {
-
     const renderer = generateRenderer({ width: side.clientWidth, height: side.clientHeight, toneMapping: toneMapping })
 
     let animationMixer
     const camera = new THREE.PerspectiveCamera(60, side.clientWidth / side.clientHeight, 0.1, 1000);
-    camera.position.set(0, 0.2, 1);
+    camera.position.set(5, 5, 5);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xdedede);
@@ -93,7 +73,12 @@ function initScene(modelPath, {
     scene.add(hemiLight);
     scene.add(directionalLight);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
+    const size = 50;
+    const divisions = 50;
+
+    const gridHelper = new THREE.GridHelper(size, divisions);
+    scene.add(gridHelper);
+    // const controls = new OrbitControls(camera, renderer.domElement);
 
     const planeGeometry = new THREE.PlaneGeometry(1000, 1000, 1, 1);
     const planeMaterial = new THREE.ShadowMaterial({
@@ -103,6 +88,7 @@ function initScene(modelPath, {
         blending: THREE.NormalBlending
     })
     const plane = new THREE.Mesh(planeGeometry, planeMaterial)
+    plane.name = 'ground'
     plane.rotateX(-Math.PI / 2)
     plane.position.set(0, 0, 0)
     plane.receiveShadow = true
@@ -111,31 +97,38 @@ function initScene(modelPath, {
         if (data) {
             // scene.background = data;
             // scene.environment = data;
-            loader.load(modelPath, (data) => {
-                if (data) {
-                    scale && data.scene.scale.set(scale.x, scale.y, scale.z);
-                    data.scene.traverse((child) => {
+            loader.load(modelPath, (model) => {
+                if (model) {
+                    const object = new THREE.Object3D();
+                    object.add(model.scene)
+                    model.scene.traverse((child) => {
                         if (child.isMesh) {
                             child.castShadow = true
                             child.receiveShadow = true
-                            // child.material.roughness = 0.5
+                            child.material.roughness = 0.5
                             child.material.envMap = data
                             child.material.needsUpdate = true;
+                            const box = new THREE.Box3().setFromObject(child.clone(false));
+                            const boxSize = box.getSize(new THREE.Vector3());
+                            object.add(getCapsule(boxSize.clone()).clone(false));
                         }
                     })
-                    directionalLight.target = data.scene
-                    animationMixer = new THREE.AnimationMixer(data.scene)
-                    if (data.animations.length > 0) {
-                        const clip = data.animations.find(animation => animation.name === 'idle')
+                    scale && object.scale.set(scale.x, scale.y, scale.z);
+
+                    directionalLight.target = object
+                    animationMixer = new THREE.AnimationMixer(model.scene)
+                    if (model.animations.length > 0) {
+                        const clip = model.animations.find(animation => animation.name === 'idle')
                         if (clip) {
                             let action = animationMixer.clipAction(clip)
                             action.loop = true
                             action.play()
                         }
                     }
-                    scene.add(data.scene);
-                    controls.target.set(data.scene.position.x, data.scene.position.y, data.scene.position.z)
-                    controls.update();
+                    scene.add(object);
+                    camera.lookAt(object.position)
+                    // controls.target.set(data.scene.position.x, data.scene.position.y, data.scene.position.z)
+                    // controls.update();
                 }
             })
         }
@@ -143,12 +136,57 @@ function initScene(modelPath, {
         console.log(err);
     });
     const update = (dt) => {
-        controls.update();
+        // controls.update();
         renderer.render(scene, camera);
         animationMixer && animationMixer.update(dt)
+        directionalLight.updateMatrix()
     }
     window.addEventListener('resize', resize);
+    // document.addEventListener('mouseup')
 
+    let raycastObjet = null
+    let listMesh = []
+    side.addEventListener('mousedown', (e) => {
+        console.clear()
+        listMesh = []
+        const point = new THREE.Vector2(
+            (e.clientX / side.clientWidth) * 2 - 1,
+            - (e.clientY / side.clientHeight) * 2 + 1
+        )
+        scene.traverse((child) => {
+            if (child.name === 'raycastMesh') {
+                listMesh.push(child)
+            }
+        })
+        raycaster.setFromCamera(point, camera);
+        console.log(listMesh)
+        const intersects = raycaster.intersectObjects(listMesh, false);
+        console.log(intersects)
+        if (intersects.length > 0) {
+            const { object } = intersects[0]
+            object && object !== plane && object !== gridHelper && (raycastObjet = object.parent)
+        }
+    })
+    side.addEventListener('mousemove', (e) => {
+        if (!raycastObjet) return
+        const point = new THREE.Vector2(
+            (e.clientX / side.clientWidth) * 2 - 1,
+            - (e.clientY / side.clientHeight) * 2 + 1
+        )
+        raycaster.setFromCamera(point, camera);
+        const intersects = raycaster.intersectObject(plane, false);
+        if (intersects.length > 0) {
+            const data = intersects[0]
+            if (data) {
+                raycastObjet.position.set(data.point.x, data.point.y + 0.2, data.point.z);
+            }
+        }
+    })
+
+    side.addEventListener('mouseup', (e) => {
+        raycastObjet && raycastObjet.position.setY(0)
+        raycastObjet = null
+    })
 
     function resize() {
         const width = side.clientWidth;
@@ -175,9 +213,10 @@ const getToneMap = (value) => {
     }
 }
 
-let view1 = initScene('./assets/models/dragon_lv3.glb', { side: side1})
-let view2 = initScene('./assets/models/foxrain_lv2.glb', { side: side2
-    // , scale: new THREE.Vector3(4, 4, 4)
+let view1 = initScene('./assets/models/Astronaut.glb', { side: side1 })
+let view2 = initScene('./assets/models/dragon_lv3.glb', {
+    side: side2,
+    // scale: new THREE.Vector3(4, 4, 4)
 })
 side1.appendChild(view1.renderer.domElement)
 side2.appendChild(view2.renderer.domElement)
@@ -189,7 +228,8 @@ toneMappingExposureValue.value = view1.renderer.toneMappingExposure;
 toneMapping.addEventListener('change', (event) => {
     const toneMap = getToneMap(parseInt(event.target.value))
     view1 = initScene('./assets/models/dragon_lv3.glb', { side: side1, toneMapping: toneMap })
-    view2 = initScene('./assets/models/foxrain_lv2.glb', { side: side2, toneMapping: toneMap,
+    view2 = initScene('./assets/models/dragon_lv3.glb', {
+        side: side2, toneMapping: toneMap,
         // scale: new THREE.Vector3(4, 4, 4)
     })
     removeAllChild(side1)
