@@ -42,7 +42,7 @@ function getCapsule(scaleTo) {
         color: 0x000000,
         depthTest: false,
         transparent: true,
-        opacity: 0.2,
+        opacity: 0,
         side: THREE.DoubleSide,
         wireframe: true
     })

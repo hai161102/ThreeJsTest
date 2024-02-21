@@ -93,14 +93,13 @@ function initScene(modelPath, {
     plane.position.set(0, 0, 0)
     plane.receiveShadow = true
     scene.add(plane)
+
     textureLoader.load('./assets/textures/environment.jpg', (data) => {
         if (data) {
             // scene.background = data;
             // scene.environment = data;
             loader.load(modelPath, (model) => {
                 if (model) {
-                    const object = new THREE.Object3D();
-                    object.add(model.scene)
                     model.scene.traverse((child) => {
                         if (child.isMesh) {
                             child.castShadow = true
@@ -108,14 +107,13 @@ function initScene(modelPath, {
                             child.material.roughness = 0.5
                             child.material.envMap = data
                             child.material.needsUpdate = true;
-                            const box = new THREE.Box3().setFromObject(child.clone(false));
-                            const boxSize = box.getSize(new THREE.Vector3());
-                            object.add(getCapsule(boxSize.clone()).clone(false));
+                            const boxSize = child.geometry.boundingBox.getSize(new THREE.Vector3());
+                            model.scene.add(getCapsule(boxSize.clone()).clone(false));
                         }
                     })
-                    scale && object.scale.set(scale.x, scale.y, scale.z);
+                    scale && model.scene.scale.set(scale.x, scale.y, scale.z);
 
-                    directionalLight.target = object
+                    directionalLight.target = model.scene
                     animationMixer = new THREE.AnimationMixer(model.scene)
                     if (model.animations.length > 0) {
                         const clip = model.animations.find(animation => animation.name === 'idle')
@@ -125,8 +123,9 @@ function initScene(modelPath, {
                             action.play()
                         }
                     }
-                    scene.add(object);
-                    camera.lookAt(object.position)
+                    scene.add(model.scene);
+                    camera.lookAt(model.scene.position)
+                    camera.updateMatrix()
                     // controls.target.set(data.scene.position.x, data.scene.position.y, data.scene.position.z)
                     // controls.update();
                 }
@@ -147,7 +146,7 @@ function initScene(modelPath, {
     let raycastObjet = null
     let listMesh = []
     side.addEventListener('mousedown', (e) => {
-        console.clear()
+        // console.clear()
         listMesh = []
         const point = new THREE.Vector2(
             (e.clientX / side.clientWidth) * 2 - 1,
@@ -159,9 +158,7 @@ function initScene(modelPath, {
             }
         })
         raycaster.setFromCamera(point, camera);
-        console.log(listMesh)
         const intersects = raycaster.intersectObjects(listMesh, false);
-        console.log(intersects)
         if (intersects.length > 0) {
             const { object } = intersects[0]
             object && object !== plane && object !== gridHelper && (raycastObjet = object.parent)
@@ -213,41 +210,41 @@ const getToneMap = (value) => {
     }
 }
 
-let view1 = initScene('./assets/models/Astronaut.glb', { side: side1 })
+// let view1 = initScene('./assets/models/Astronaut.glb', { side: side1 })
 let view2 = initScene('./assets/models/dragon_lv3.glb', {
     side: side2,
     // scale: new THREE.Vector3(4, 4, 4)
 })
-side1.appendChild(view1.renderer.domElement)
+// side1.appendChild(view1.renderer.domElement)
 side2.appendChild(view2.renderer.domElement)
 
-toneMapping.value = view1.renderer.toneMapping;
-toneMappingExposure.value = view1.renderer.toneMappingExposure;
-toneMappingExposureValue.value = view1.renderer.toneMappingExposure;
+toneMapping.value = view2.renderer.toneMapping;
+toneMappingExposure.value = view2.renderer.toneMappingExposure;
+toneMappingExposureValue.value = view2.renderer.toneMappingExposure;
 
 toneMapping.addEventListener('change', (event) => {
     const toneMap = getToneMap(parseInt(event.target.value))
-    view1 = initScene('./assets/models/dragon_lv3.glb', { side: side1, toneMapping: toneMap })
+    // view1 = initScene('./assets/models/dragon_lv3.glb', { side: side1, toneMapping: toneMap })
     view2 = initScene('./assets/models/dragon_lv3.glb', {
         side: side2, toneMapping: toneMap,
         // scale: new THREE.Vector3(4, 4, 4)
     })
-    removeAllChild(side1)
+    // removeAllChild(side1)
     removeAllChild(side2)
-    side1.appendChild(view1.renderer.domElement)
+    // side1.appendChild(view1.renderer.domElement)
     side2.appendChild(view2.renderer.domElement)
 })
 
 toneMappingExposure.addEventListener('change', (event) => {
     let value = parseFloat(event.target.value)
-    view1.renderer.toneMappingExposure = value;
+    // view1.renderer.toneMappingExposure = value;
     view2.renderer.toneMappingExposure = value;
     toneMappingExposureValue.value = value;
 })
 
 toneMappingExposureValue.addEventListener('change', (event) => {
     let value = parseFloat(event.target.value)
-    view1.renderer.toneMappingExposure = value;
+    // view1.renderer.toneMappingExposure = value;
     view2.renderer.toneMappingExposure = value;
     toneMappingExposure.value = value;
 })
@@ -258,7 +255,7 @@ let previous = Date.now()
 const animate = () => {
     const now = Date.now()
     const delta = (now - previous) / 1000;
-    view1 && view1.update(delta)
+    // view1 && view1.update(delta)
     view2 && view2.update(delta)
     // match && match.render(delta)
     previous = now;
