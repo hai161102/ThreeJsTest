@@ -2,7 +2,30 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { generateRenderer, removeAllChild, generateLights, getCapsule } from './utils/Utils'
+import GrowParticleSystem from './manager/effects/GrowParticleSystem'
 import Match from './match/Match'
+
+import System, {
+    Emitter,
+    Rate,
+    Span,
+    Position,
+    Mass,
+    Radius,
+    Life,
+    PointZone,
+    Vector3D,
+    Alpha,
+    Scale,
+    Color,
+    SpriteRenderer,
+} from 'three-nebula';
+
+
+import particleSystemLevelUp from "./assets/effects/levelup.json" assert { type: 'json' };
+console.log(particleSystemLevelUp)
+
+
 const app = document.getElementById('app')
 const side1 = document.getElementById('side1')
 const side2 = document.getElementById('side2')
@@ -78,7 +101,7 @@ function initScene(modelPath, {
 
     const gridHelper = new THREE.GridHelper(size, divisions);
     scene.add(gridHelper);
-    // const controls = new OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
 
     const planeGeometry = new THREE.PlaneGeometry(1000, 1000, 1, 1);
     const planeMaterial = new THREE.ShadowMaterial({
@@ -93,6 +116,8 @@ function initScene(modelPath, {
     plane.position.set(0, 0, 0)
     plane.receiveShadow = true
     scene.add(plane)
+    let particleSystem;
+    let flameParticles;
 
     textureLoader.load('./assets/textures/environment.jpg', (data) => {
         if (data) {
@@ -126,19 +151,38 @@ function initScene(modelPath, {
                     scene.add(model.scene);
                     camera.lookAt(model.scene.position)
                     camera.updateMatrix()
-                    // controls.target.set(data.scene.position.x, data.scene.position.y, data.scene.position.z)
-                    // controls.update();
+                    controls.target.set(model.scene.position.x, model.scene.position.y, model.scene.position.z)
+                    controls.update();
+                    textureLoader.load('./assets/textures/thingLight.png', (data) => {
+                        if (data) {
+                            data.flipY = false;
+                            flameParticles = new GrowParticleSystem({canvas: side, texture: data, emit_every: 0.5, particle_life: 0.5});
+                            flameParticles.setPosition(new THREE.Vector3(0, 0, 0));
+                            model.scene.add(flameParticles.getMesh());
+                        }
+                    });
                 }
             })
         }
     }, undefined, (err) => {
         console.log(err);
     });
+    
+    // System.fromJSONAsync(particleSystemLevelUp.particleSystemState, THREE).then(system => {
+    //     const particleRenderer = new SpriteRenderer(scene, THREE);
+    //     particleSystem = system.addRenderer(particleRenderer)
+    //     console.log(particleSystem)
+    // }, err => {
+    //     console.log(err)
+    // });
+
     const update = (dt) => {
-        // controls.update();
+        controls.update();
         renderer.render(scene, camera);
         animationMixer && animationMixer.update(dt)
         directionalLight.updateMatrix()
+        particleSystem && particleSystem.update()
+        flameParticles && flameParticles.update(dt);
     }
     window.addEventListener('resize', resize);
     // document.addEventListener('mouseup')
@@ -192,7 +236,11 @@ function initScene(modelPath, {
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
         renderer.setSize(width, height);
+
+        flameParticles && flameParticles.updateAspect();
     }
+
+
     return { renderer, update }
 
 }
@@ -217,6 +265,8 @@ let view2 = initScene('./assets/models/dragon_lv3.glb', {
 })
 // side1.appendChild(view1.renderer.domElement)
 side2.appendChild(view2.renderer.domElement)
+
+
 
 toneMapping.value = view2.renderer.toneMapping;
 toneMappingExposure.value = view2.renderer.toneMappingExposure;
